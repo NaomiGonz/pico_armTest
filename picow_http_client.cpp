@@ -12,7 +12,11 @@
 
 #include "hardware/sync.h"
 
-#include "inverse_kinematics/inverse_kinematics.hpp" // Make sure NU is defined here (e.g., #define NU 5)
+//#include "inverse_kinematics/inverse_kinematics.hpp" 
+
+#include "rrt_base.hpp" // naomi + gidon
+#include "rrt_3d.h" // naomi + gidon
+#include "forward_kinematics/forward_kinematics_roarm_double.h" // naomi + gidon
 
 #include <vector>
 
@@ -397,15 +401,90 @@ int main() {
     }
     printf("Connected to WiFi.\n");
 
+    // std::vector<std::vector <double>> joint_positions = {
+    //     {0.0, 0.0, 0.0, -1.0, 0.0}, // Initial position
+    //     {0.442719,0.442719,0.885438,-1.000000,0.885438},
+    //     {0.286336,0.870385,1.248684,-1.507055,1.868141}, 
+    //     {1.0, 1.0, 2.0, -1, 2.0}  
+    // };
+
+
+
+    // -- RRT* 3D with 5 DOF --- 
+    /*
+        Start Section added by Naomi and Gidon
+    */
+
+    // --- Configuration ---
+    std::cout << "Configurating RRTStar3D" << std::endl;
+    const Configuration c_init = {0.0, 0.0, 0.0, 0.0, 0.0};
+    const Configuration c_goal = {0.5, 1.0, 1.0, -0.5, 1.0};
+    const double p = 0.5; // Goal bias probability
+    const int k = 20;      // Number of neighbors for RRT*
+    const double step_size = 0.1;
+    const int NUM_NODES = 1000; // Number of iterations/nodes to add
+    const int SEED = 42;
+    //const double XYZ_MIN = -2.0;
+    //const double XYZ_MAX = 2.0;
+
+    std::vector<SphereObstacle> obstacles;
+    //obstacles.emplace_back(SphereObstacle{0.073214 , 0.0906615, 0.2217195, 0.0538023});
+    obstacles.emplace_back(SphereObstacle{0.14 , 0.05, 0.4, 0.05});
+    obstacles.emplace_back(SphereObstacle{0.24 , 0.05, 0.4, 0.05});
+    obstacles.emplace_back(SphereObstacle{0.14 , 0.0025, 0.4, 0.05});
+    obstacles.emplace_back(SphereObstacle{0.14 , 0.0025, 0.3, 0.05});
+    obstacles.emplace_back(SphereObstacle{0.0 , 0.05, 0.3, 0.05});
+    obstacles.emplace_back(SphereObstacle{0.0 , 0.05, 0.2, 0.05});
+    obstacles.emplace_back(SphereObstacle{0.1 , 0.04, 0.3, 0.05});
+    obstacles.emplace_back(SphereObstacle{0.1 , 0.04, 0.2, 0.05});
+
+
+    // Joint angle restrictions in radians
+    std::vector<std::pair<double, double>> joint_limits = { {-2.8973, 2.8973}, {-1.7628, 1.7628}, {-2.8973, 2.8973}, {-3.0718, -0.0698}, {-2.8973, 2.8973} };
+
+    // --- RRT Initialization ---
+    RRTStar3D rrt(SEED, obstacles, joint_limits);
+    rrt.init_rrt(c_init, c_goal);
+
+    // --- RRT Execution ---
+    std::cout << "Running RRT* for " << NUM_NODES << " iterations..." << std::endl;
+    for (int i = 0; i < NUM_NODES; ++i) {
+        rrt.add_node(p, k, step_size);
+        if ((i + 1) % 100 == 0) {
+            std::cout << "Iteration: " << (i + 1) << "/" << NUM_NODES << std::endl;
+        }
+    }
+
+    // -- Goal Path Extracion + Setup for Robot to Execute --
+    auto goal_path = rrt.get_path_to_goal();
+    // if no path to goal found exit and return
+    if (goal_path.empty()){
+        std::cout << "ERROR: No path to goal found" << std::endl;
+        return -1;
+    }
+
+    // Set up joint positions robot will execute to reach goal
+    std::vector<std::vector <double>> joint_positions;
+    for (int i =0; i < goal_path.size(), i++){
+        joint_positions.push_back(goal_path[i].first);
+    }
+    joint_positions.push_back(goal_path[goal_path.size() - 1].second);
+
+    /*
+        End Section added by Naomi and Gidon
+    */
+
+
+
     // --- Loop through the poses ---
-    for (int i = 0; i < num_poses; ++i) {
-        printf("\n--- Processing Pose %d of %d ---\n", i + 1, num_poses);
+    for (int i = 0; i < joint_positions.size(); ++i) {
+        printf("\n--- Processing Pose %d of %d ---\n", i + 1, 3);
 
         // json_command_buffer
         char json_command_buffer[JSON_COMMAND_BUFFER_SIZE]; // Buffer for the command string
 
         // SET YOUR GOAL HERE
-        std::vector<double> current_goal = {1.403416, 1.063706, -0.069165, -1.139720, 0.424151};
+        std::vector<double> current_goal = joint_positions[i];
 
         printf("Current Goal: ");
         for (int j = 0; j < NU; j++) {
