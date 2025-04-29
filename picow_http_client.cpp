@@ -465,7 +465,7 @@ int main() {
 
     // Set up joint positions robot will execute to reach goal
     std::vector<std::vector <double>> joint_positions;
-    for (int i =0; i < goal_path.size(), i++){
+    for (int i =0; i < goal_path.size(); i++){
         joint_positions.push_back(goal_path[i].first);
     }
     joint_positions.push_back(goal_path[goal_path.size() - 1].second);
